@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IPTV Viewer – v1.7 (All‑in‑One + Playlist Backups)</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#141e33; /* slightly brighter than v1.6 for readability */
+      --panel-2:#0f1b2f; --text:#eaf1ff; --muted:#a6b8da; --accent:#4da3ff; --ok:#26d07c; --warn:#ffd166; --danger:#ff6b6b; --radius:16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#0a0f1a);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",sans-serif}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--panel);border-bottom:1px solid #1a2742;position:sticky;top:0;z-index:30}
+    header .title{font-weight:700;letter-spacing:.2px}
+    header .version{font-size:12px;color:var(--muted)}
+    .wrap{display:grid;grid-template-columns:360px 1fr;gap:14px;height:calc(100% - 64px);padding:14px}
+    @media (max-width:1100px){.wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto}}
+
+    .toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#2a3652;color:#fff;border:1px solid #3b5288;border-radius:12px;padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}
+    .toast.show{opacity:1}
+    .toast.warn{background:#3a3a10;border-color:#80762c;color:#ffef9a}
+    .toast.err{background:#3a1120;border-color:#7a2a3a;color:#ffc3cf}
+
+    .card{background:var(--panel);border:1px solid #1a2742;border-radius:var(--radius);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .card h3{margin:0 0 8px 0;font-size:13px;color:var(--accent);font-weight:700}
+
+    .left{display:flex;flex-direction:column;min-height:0}
+    .controls{padding:12px}
+    .controls .row{display:flex;gap:8px;flex-wrap:wrap}
+    .controls input[type="text"], .controls input[type="url"], .controls select{background:var(--panel-2);border:1px solid #1a2742;color:var(--text);border-radius:12px;padding:10px 12px;outline:none;min-width:0}
+    .controls input[type="file"]{display:none}
+    .btn{background:#16233d;color:var(--text);border:1px solid #203257;border-radius:12px;padding:10px 12px;cursor:pointer;transition:.2s}
+    .btn:hover{background:#1a2a49}
+    .btn.accent{background:linear-gradient(180deg,#1d5bb8,#184f9f);border-color:#1952a7}
+    .btn.ghost{background:transparent;border-color:#203257}
+    .pill{padding:6px 10px;border-radius:999px;background:#0f1a31;border:1px solid #22345a;color:var(--muted);font-size:12px}
+
+    .searchbar{display:flex;gap:8px;margin-top:10px}
+    .searchbar input{flex:1}
+
+    .list{flex:1;min-height:220px;overflow:auto;position:relative}
+
+    /* Spinner overlay */
+    .spinner-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(10,15,26,.9);display:flex;align-items:center;justify-content:center;z-index:10;visibility:hidden;opacity:0;transition:opacity .25s ease}
+    .spinner-overlay.active{visibility:visible;opacity:1}
+    .spinner{width:64px;height:64px;border:6px solid #203257;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .channel{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #162448}
+    .channel:hover{background:#111b31}
+    .logo{width:48px;height:48px;border-radius:10px;background:#0c1426;border:1px solid #1b2a4a;display:grid;place-items:center;font-size:11px;color:#7ea6e6;overflow:hidden}
+    .name{font-weight:600}
+    .meta{font-size:12px;color:var(--muted)}
+    .fav{cursor:pointer;border-radius:10px;padding:6px 8px;border:1px solid #27416f;background:#0e1930}
+    .fav.active{background:#153459;border-color:#2a6dbe;color:#a7d0ff}
+
+    .player{display:flex;flex-direction:column;gap:12px;min-height:0}
+    .video-wrap{position:relative;border-radius:var(--radius);overflow:hidden;border:1px solid #1a2742;background:#000;height:min(62vh,70dvh)}
+    video{width:100%;height:100%;object-fit:contain;background:#000}
+    .now{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px}
+
+    .footer{padding:10px 14px;color:var(--muted);font-size:12px;text-align:center;border-top:1px solid #1a2742}
+    details.readme{padding:12px}
+    details.readme summary{cursor:pointer;user-select:none}
+    .tag{font-size:11px;color:#8bb4ff;background:#0d1b34;border:1px solid #1d335e;border-radius:999px;padding:4px 8px}
+
+    /* Playlist manager modal */
+    #playlistModal{position:fixed;inset:0;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:opacity .25s;z-index:50}
+    #playlistModal.active{visibility:visible;opacity:1}
+    #playlistPanel{background:#18243d; /* brighter modal panel */ border:1px solid #253a63;border-radius:var(--radius);width:min(92%,760px);max-height:80vh;overflow:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+    #playlistPanel h3{margin:0 0 6px 0;color:#8ec1ff}
+    #plistHeader{color:var(--muted);margin-bottom:10px}
+    .plist-row{display:grid;grid-template-columns:1fr 1fr 90px 40px 40px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #24365a}
+    .plist-row:last-child{border-bottom:none}
+    .plist-row .meta{color:var(--muted);font-size:12px}
+    .plist-row button{padding:6px 8px;font-size:12px;border-radius:8px;border:1px solid #22345a;background:#0f1a31;color:var(--text);cursor:pointer}
+    .plist-row button:hover{background:#1a2a49}
+    #mgrFooter{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    #closeManager{margin-top:10px;width:100%}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="title">IPTV Viewer</div>
+      <div class="version">v1.7 · All‑in‑One + Backups</div>
+    </div>
+    <div class="row">
+      <label class="btn" for="fileInput">Open M3U</label>
+      <input id="fileInput" type="file" accept=".m3u,.m3u8,.txt" />
+      <button class="btn ghost" id="btnSample">Sample</button>
+      <button class="btn" id="btnSavePlaylist">💾 Save</button>
+      <button class="btn" id="btnManage">📚 Playlists</button>
+      <button class="btn" id="btnExportFavs" title="Export your favourite channels as a new playlist">Export Favourites</button>
+    </div>
+  </header>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="playlistModal">
+    <div id="playlistPanel" class="card">
+      <h3>Saved Playlists</h3>
+      <div id="plistHeader"></div>
+      <div id="playlistList"></div>
+      <div id="mgrFooter">
+        <button id="btnExportAll" class="btn">⬇ Export All</button>
+        <button id="btnImportAll" class="btn">⬆ Import All</button>
+        <button id="btnRestore" class="btn">♻ Restore Backup</button>
+      </div>
+      <button id="closeManager" class="btn">Close</button>
+      <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="left card">
+      <div class="controls">
+        <h3>Playlist Source</h3>
+        <div class="row">
+          <input id="urlInput" type="url" placeholder="Paste M3U/M3U8 URL and click Load…"/>
+          <button class="btn accent" id="btnLoadUrl">Load</button>
+        </div>
+        <div class="searchbar">
+          <input id="search" type="text" placeholder="Search channels (name, group, country)…"/>
+          <select id="groupFilter"><option value="">All groups</option></select>
+          <select id="onlyFavs"><option value="0">All</option><option value="1">Favourites</option></select>
+        </div>
+      </div>
+      <div class="list" id="list" role="list">
+        <div class="spinner-overlay" id="spinner"><div class="spinner"></div></div>
+      </div>
+      <details class="readme">
+        <summary>README / Notes</summary>
+        <div style="margin-top:8px;color:var(--muted)">
+          <ul>
+            <li>Open a local <strong>.m3u/.m3u8</strong> file or paste an M3U/M3U8 <strong>URL</strong>.</li>
+            <li>Click a channel to start playback. HLS (<code>.m3u8</code>) uses <em>hls.js</em> (loaded automatically).</li>
+            <li>Some streams may not play due to <em>CORS</em>, geo‑blocks, or unsupported codecs.</li>
+            <li>⭐ Favourites are saved locally; you can export them as a new playlist.</li>
+            <li>Remote URLs may be CORS‑blocked — this app auto‑retries via proxies.</li>
+          </ul>
+        </div>
+      </details>
+      <div class="footer">© 2025 IPTV Viewer · v1.7 · Single‑file · No tracking.</div>
+    </div>
+
+    <div class="player card">
+      <div class="video-wrap">
+        <video id="video" controls autoplay playsinline></video>
+        <div class="spinner-overlay" id="videoSpinner"><div class="spinner"></div></div>
+      </div>
+      <div class="now" id="nowPanel">
+        <span class="pill" id="nowStatus">No channel selected</span>
+        <span class="tag" id="nowGroup" hidden></span>
+        <span class="tag" id="nowRes" hidden></span>
+        <span class="tag" id="nowType" hidden></span>
+      </div>
+    </div>
+  </div>
+
+<!-- hls.js bootstrap (CDN). Replace with inline build if you need fully offline use. -->
+<script>
+window.HlsLoader=(function(){
+  const src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js";
+  return new Promise((resolve,reject)=>{
+    if (window.Hls){ resolve(window.Hls); return; }
+    const s=document.createElement('script'); s.src=src; s.onload=()=>resolve(window.Hls); s.onerror=()=>reject(new Error('Failed to load hls.js'));
+    document.head.appendChild(s);
+  });
+})();
+</script>
+
+<script>
+// ---- Toast helper
+const toastEl=document.getElementById('toast');
+let toastTimer=null;
+function showToast(msg,type='info',ms=2200){ if(!toastEl) return; toastEl.textContent=msg; toastEl.className='toast '+(type==='warn'?'warn':type==='err'?'err':''); requestAnimationFrame(()=>toastEl.classList.add('show')); if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove('show'), ms); }
+
+// ---- Utility: parse M3U
+function parseM3U(text){
+  const lines=text.split(/\r?\n/); const out=[]; let cur=null; const attrRe=/([a-zA-Z0-9\-]+)="([^"]*)"/g;
+  for(let i=0;i<lines.length;i++){
+    const L=lines[i].trim(); if(!L) continue;
+    if(L.startsWith('#EXTINF')){
+      cur={name:'',url:'',attrs:{},group:'',logo:'',tvgId:'',country:''};
+      const attrPart=L.substring(L.indexOf(':')+1, L.indexOf(','));
+      if(attrPart){ let m; while((m=attrRe.exec(attrPart))){ cur.attrs[m[1]] = m[2]; } }
+      cur.name=L.substring(L.indexOf(',')+1).trim();
+      cur.logo=cur.attrs['tvg-logo']||''; cur.tvgId=cur.attrs['tvg-id']||''; cur.group=cur.attrs['group-title']||cur.attrs['tvg-group']||''; cur.country=cur.attrs['tvg-country']||'';
+    } else if (L.startsWith('#EXTGRP:')){ if(cur) cur.group=L.substring(8).trim(); }
+    else if (!L.startsWith('#')){ if(cur){ cur.url=L; out.push(cur); cur=null; } }
+  }
+  return out;
+}
+
+// ---- DOM helpers & state
+const $=sel=>document.querySelector(sel);
+const listEl=$('#list');
+const groupFilter=$('#groupFilter');
+const onlyFavs=$('#onlyFavs');
+const searchEl=$('#search');
+const video=$('#video');
+const nowStatus=$('#nowStatus');
+const nowGroup=$('#nowGroup');
+const nowRes=$('#nowRes');
+const nowType=$('#nowType');
+
+let channels=[]; let filtered=[]; let favs=new Set(JSON.parse(localStorage.getItem('iptv.favs')||'[]'));
+let lastSourceUrl=''; // remembers last URL or 'local-file'
+
+function saveFavs(){ localStorage.setItem('iptv.favs', JSON.stringify([...favs])); }
+
+function renderGroups(){
+  const groups=[...new Set(channels.map(c=>c.group).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  groupFilter.innerHTML='<option value="">All groups</option>'+groups.map(g=>`<option>${escapeHtml(g)}</option>`).join('');
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;","\":":"&quot;","'":"&#39;",">":"&gt;"}[m]||m)); }
+
+function channelRow(c,idx){
+  const logo = c.logo ? `<img src="${c.logo}" alt="logo" style="width:100%;height:100%;object-fit:cover">` : `<span>${escapeHtml((c.name||'?').slice(0,3).toUpperCase())}</span>`;
+  const isFav=favs.has(c.url);
+  return `<div class="channel" role="listitem" data-idx="${idx}">
+    <div class="logo">${logo}</div>
+    <div>
+      <div class="name">${escapeHtml(c.name||'(no name)')}</div>
+      <div class="meta">${escapeHtml(c.group||'Unsorted')}${c.country?` · ${escapeHtml(c.country)}`:''}</div>
+    </div>
+    <button class="fav ${isFav?'active':''}" title="Toggle favourite" aria-label="Favourite">★</button>
+  </div>`;
+}
+
+function applyFilter(){
+  const q=(searchEl?.value||'').trim().toLowerCase();
+  const g=(groupFilter?.value||'').trim().toLowerCase();
+  const onlyF=onlyFavs?.value==='1';
+  filtered=channels.filter(c=>{
+    const hitQ = !q || [c.name,c.group,c.country,c.tvgId].some(v=> (v||'').toLowerCase().includes(q));
+    const hitG = !g || (c.group||'').toLowerCase()===g;
+    const hitF = !onlyF || favs.has(c.url);
+    return hitQ && hitG && hitF;
+  });
+  listEl.innerHTML=filtered.map((c,i)=>channelRow(c,i)).join('')||`<div style="padding:16px;color:var(--muted)">No channels match the current filters.</div>`;
+}
+
+function bindListEvents(){
+  listEl.onclick=(e)=>{
+    const row=e.target.closest('.channel'); if(!row) return;
+    const idx=+row.dataset.idx; const c=filtered[idx]; if(!c) return;
+    if(e.target.classList.contains('fav')){ if(favs.has(c.url)) favs.delete(c.url); else favs.add(c.url); saveFavs(); applyFilter(); return; }
+    playChannel(c);
+  };
+}
+
+let hls=null; let current=null;
+async function ensureHls(){ try{ return await window.HlsLoader; }catch(e){ console.warn(e); return null; } }
+function showSpinner(id, state){ const el=document.getElementById(id); if(el) el.classList.toggle('active', state); }
+
+async function playChannel(c){
+  current=c; nowStatus.textContent = `Loading: ${c.name}`;
+  nowGroup.hidden = !c.group; nowGroup.textContent = c.group||'';
+  nowRes.hidden = false; nowRes.textContent = '…'; nowType.hidden = false; nowType.textContent = 'Detecting…';
+  if(hls){ try{ hls.destroy(); }catch{} hls=null; }
+  try{ video.pause(); }catch{}
+  video.removeAttribute('src'); video.load();
+  showSpinner('videoSpinner', true);
+  const isHls = /\.m3u8(\?|$)/i.test(c.url) || (c.url.startsWith('http') && !/\.(mp4|webm|ogg)$/i.test(c.url));
+  if(isHls && video.canPlayType('application/vnd.apple.mpegURL')){ video.src=c.url; video.play().catch(()=>{}); nowType.textContent='HLS (native)'; }
+  else if(isHls){
+    const Hls=await ensureHls();
+    if(Hls && Hls.isSupported()){
+      hls=new Hls({maxLiveSyncPlaybackRate:1.5, lowLatencyMode:true});
+      hls.on(Hls.Events.MANIFEST_PARSED,(_,data)=>{ nowRes.textContent = `${data.levels?.[0]?.width||''}×${data.levels?.[0]?.height||''}`; });
+      hls.on(Hls.Events.LEVEL_SWITCHED,(_,data)=>{ const lvl=hls.levels?.[data.level]; if(lvl) nowRes.textContent=`${lvl.width||''}×${lvl.height||''}`; });
+      hls.on(Hls.Events.ERROR,(ev,data)=>{ if(data?.fatal){ nowStatus.textContent = `Stream error: ${data?.details||'fatal'}`; showSpinner('videoSpinner', false);} });
+      hls.loadSource(c.url); hls.attachMedia(video); nowType.textContent='HLS (hls.js)';
+    } else { nowStatus.textContent='HLS not supported in this browser.'; nowType.textContent='Not supported'; showSpinner('videoSpinner', false); return; }
+  } else { video.src=c.url; video.play().catch(()=>{}); nowType.textContent='Direct'; }
+  nowStatus.textContent=`Now playing: ${c.name}`;
+}
+
+video.addEventListener('canplay', ()=> showSpinner('videoSpinner', false));
+video.addEventListener('loadeddata', ()=> showSpinner('videoSpinner', false));
+video.addEventListener('error', ()=> showSpinner('videoSpinner', false));
+
+// ---- Fetch with dual proxy fallback (AllOrigins → Fringe)
+async function fetchWithProxy(url){
+  try{ const r=await fetch(url,{mode:'cors'}); if(!r.ok) throw new Error('HTTP '+r.status); return r; }
+  catch(err){ showToast('⚠️ CORS blocked — retrying via AllOrigins…','warn');
+    try{ const aurl='https://api.allorigins.win/raw?url='+encodeURIComponent(url); const r2=await fetch(aurl); if(!r2.ok) throw new Error('AllOrigins HTTP '+r2.status); return r2; }
+    catch(err2){ showToast('⚠️ Proxy failed — retrying via Fringe…','warn'); const furl='https://cors-proxy.fringe.zone/'+url; const r3=await fetch(furl); if(!r3.ok) throw new Error('Fringe HTTP '+r3.status); return r3; }
+  }
+}
+
+// ---- Loaders
+async function loadFromUrl(url){
+  try{ showSpinner('spinner', true); const res=await fetchWithProxy(url); const text=await res.text(); lastSourceUrl=url; ingest(text); }
+  catch(err){ console.error(err); showToast('❌ Failed to fetch playlist: '+(err.message||err),'err',3200); }
+  finally{ showSpinner('spinner', false); }
+}
+
+function ingest(text){ channels=parseM3U(text); renderGroups(); applyFilter(); bindListEvents(); if(filtered[0]) playChannel(filtered[0]); }
+
+// ---- Favourites export
+function exportFavs(){ const favList=channels.filter(c=>favs.has(c.url)); if(favList.length===0){ showToast('No favourites to export'); return; }
+  const lines=['#EXTM3U']; for(const c of favList){ const attrs=[`tvg-id="${c.tvgId||''}"`,`tvg-name="${c.name||''}"`,`tvg-logo="${c.logo||''}"`,`group-title="${c.group||''}"`].join(' '); lines.push(`#EXTINF:-1 ${attrs},${c.name||''}`); lines.push(c.url); }
+  const blob=new Blob([lines.join('\n')],{type:'audio/x-mpegurl'}); const a=document.createElement('a'); const ts=new Date().toISOString().replace(/[:.]/g,'-'); a.href=URL.createObjectURL(blob); a.download=`favourites_${ts}.m3u`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ---- UI wiring
+$('#fileInput').addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; showSpinner('spinner', true); const text=await f.text(); lastSourceUrl='local-file:'+(f.name||'playlist'); ingest(text); showSpinner('spinner', false); });
+$('#btnLoadUrl').onclick=()=>{ const u=$('#urlInput').value.trim(); if(!u){showToast('Paste a playlist URL first','warn'); return;} loadFromUrl(u); };
+$('#search').addEventListener('input', applyFilter);
+$('#groupFilter').addEventListener('change', applyFilter);
+$('#onlyFavs').addEventListener('change', applyFilter);
+$('#btnExportFavs').onclick=exportFavs;
+
+// ---- Playlist Manager (Save/Load/Rename/Delete/Close + Import/Export/Auto‑Backup)
+let playlists=JSON.parse(localStorage.getItem('iptv.playlists')||'[]');
+function savePlaylists(){ localStorage.setItem('iptv.playlists', JSON.stringify(playlists)); updatePlistHeader(); }
+function openManager(){ renderManager(); updatePlistHeader(); document.getElementById('playlistModal').classList.add('active'); }
+function closeManager(){ document.getElementById('playlistModal').classList.remove('active'); }
+$('#btnManage').onclick=openManager; $('#closeManager').onclick=closeManager;
+
+function updatePlistHeader(){ const ph=document.getElementById('plistHeader'); if(ph) ph.textContent = `Saved Playlists — ${playlists.length} total`; }
+function defaultName(){ try{ const u=new URL(lastSourceUrl); return u.hostname; }catch{ return 'Playlist '+new Date().toLocaleString(); } }
+
+function downloadJSON(obj, filename){ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href); }
+function autoBackup(){ const ts=new Date().toISOString().replace(/[:.]/g,'-'); const name=`iptv_autobackup_${ts}.json`; downloadJSON(playlists, name); showToast('💾 Auto‑backup created'); }
+
+function saveCurrent(){ if(!channels.length){ showToast('No playlist loaded','warn'); return; } autoBackup(); const name=prompt('Enter playlist name:', defaultName()); if(!name) return; const existing=playlists.find(p=>p.name===name); const entry={ name, date:new Date().toLocaleDateString(), url:lastSourceUrl||'unknown', channels}; if(existing){ if(!confirm('Overwrite existing playlist?')) return; Object.assign(existing, entry); } else { playlists.push(entry); } savePlaylists(); renderManager(); showToast('💾 Saved '+name); }
+$('#btnSavePlaylist').onclick=saveCurrent;
+
+function renderManager(){ const list=document.getElementById('playlistList'); if(!playlists.length){ list.innerHTML='<div style="color:var(--muted);padding:8px">No saved playlists</div>'; return; } list.innerHTML=playlists.map((p,i)=>`<div class='plist-row'><div><b>${escapeHtml(p.name)}</b><div class='meta'>${escapeHtml(p.url||'local')}</div></div><div class='meta'>${escapeHtml(p.date||'')}</div><div class='meta'>${(p.channels||[]).length} ch</div><button onclick='loadSaved(${i})'>▶ Load</button><button onclick='renameSaved(${i})'>✏</button><button onclick='deleteSaved(${i})'>🗑</button></div>`).join(''); }
+
+window.loadSaved=function(i){ const p=playlists[i]; if(!p) return; channels=p.channels||[]; lastSourceUrl=p.url||''; renderGroups(); applyFilter(); bindListEvents(); closeManager(); if(filtered[0]) playChannel(filtered[0]); showToast('✅ Loaded: '+p.name+' ('+channels.length+' ch)'); };
+window.renameSaved=function(i){ const p=playlists[i]; if(!p) return; const newName=prompt('Rename playlist:', p.name); if(!newName) return; if(playlists.some((x,idx)=>idx!==i && x.name===newName)){ if(!confirm('Name exists. Overwrite that entry?')) return; playlists = playlists.filter((x,idx)=>idx===i || x.name!==newName); } p.name=newName; savePlaylists(); renderManager(); showToast('Renamed'); };
+window.deleteSaved=function(i){ const p=playlists[i]; if(!p) return; if(!confirm('Delete '+p.name+'?')) return; playlists.splice(i,1); savePlaylists(); renderManager(); showToast('Deleted'); };
+
+// Export/Import/Restore
+const importFileEl=document.getElementById('importFile');
+$('#btnExportAll').onclick=()=>{ const d=new Date().toISOString().slice(0,10); downloadJSON(playlists, `iptv_playlists_backup_${d}.json`); showToast('✅ Exported all'); };
+$('#btnImportAll').onclick=()=>{ autoBackup(); importFileEl.onchange=async (e)=>{ const f=e.target.files?.[0]; if(!f) return; try{ const text=await f.text(); const arr=JSON.parse(text); if(!Array.isArray(arr)) throw new Error('Invalid file format'); for(const entry of arr){ if(!entry?.name||!Array.isArray(entry?.channels)) continue; const existing=playlists.find(p=>p.name===entry.name); if(existing){ if(confirm(`Playlist "${entry.name}" exists. Overwrite?`)) Object.assign(existing, entry); } else { playlists.push(entry); } } savePlaylists(); renderManager(); showToast('✅ Imported '+arr.length+' item(s)'); }catch(err){ showToast('❌ Import failed: '+err.message,'err',3200);} finally{ importFileEl.value=''; } }; importFileEl.click(); };
+$('#btnRestore').onclick=()=>{ importFileEl.onchange=async (e)=>{ const f=e.target.files?.[0]; if(!f) return; try{ const text=await f.text(); const arr=JSON.parse(text); if(!Array.isArray(arr)) throw new Error('Invalid backup'); playlists=arr; savePlaylists(); renderManager(); showToast('♻ Restored backup'); }catch(err){ showToast('❌ Restore failed: '+err.message,'err',3200);} finally{ importFileEl.value=''; } }; importFileEl.click(); };
+
+// ---- Sample playlist
+const SAMPLE=`#EXTM3U\n#EXTINF:-1 tvg-id="NASA" tvg-name="NASA" tvg-logo="" group-title="Space",NASA TV (HLS)\nhttps://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8\n#EXTINF:-1 tvg-id="DWEnglish" tvg-name="DW English" tvg-logo="" group-title="News",DW English\nhttps://dwamdstream111.akamaized.net/hls/live/2015530/dwstream111/index.m3u8\n#EXTINF:-1 tvg-id="SkyNews" tvg-name="Sky News" tvg-logo="" group-title="News",Sky News\nhttps://linear017-gb-hls1-prd-ak.cdn.skycdp.com/016a/Content/HLS_001_1080_120/Live/channel(skynews)/index.m3u8\n`;
+$('#btnSample').onclick=()=>{ showSpinner('spinner',true); setTimeout(()=>{ lastSourceUrl='sample'; ingest(SAMPLE); showSpinner('spinner',false); }, 200); };
+
+// ---- Initial bindings
+bindListEvents(); updatePlistHeader();
+</script>
+</body>
+</html>
